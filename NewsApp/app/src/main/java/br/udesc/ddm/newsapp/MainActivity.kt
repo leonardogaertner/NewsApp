@@ -26,9 +26,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
@@ -45,9 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import br.udesc.ddm.newsapp.data.model.Article
@@ -62,7 +64,7 @@ import java.nio.charset.StandardCharsets
 
 // --- Definição das Rotas (Sem alteração) ---
 sealed class Screen(val route: String) {
-    object NewsList : Screen("news_list")
+    object NewsList : Screen("news_list") // Rota antiga, não mais usada como start
     object ArticleDetail : Screen("article_detail/{articleUrl}") {
         fun createRoute(articleUrl: String): String {
             val encodedUrl = URLEncoder.encode(articleUrl, StandardCharsets.UTF_8.toString())
@@ -84,71 +86,121 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- Controlador de Navegação (Sem alteração) ---
+// --- Controlador de Navegação (MODIFICADO) ---
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    NavHost(
-        navController = navController,
-        startDestination = Screen.NewsList.route
-    ) {
-        composable(Screen.NewsList.route) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                topBar = {
-                    AppBar(title = "News App")
+    // 1. Instanciamos o ViewModel aqui (estado elevado)
+    // Ele será compartilhado por todas as telas da bottom nav.
+    val viewModel: NewsViewModel = viewModel()
+
+    // 2. Lista de telas da BottomNav
+    val bottomNavItems = listOf(
+        BottomNavScreen.Recentes,
+        BottomNavScreen.Destaques,
+        BottomNavScreen.Regional,
+    )
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            // 3. Renderiza a BottomBar
+            NavigationBar {
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route
+
+                bottomNavItems.forEach { screen ->
+                    NavigationBarItem(
+                        icon = { Icon(screen.icon, contentDescription = screen.title) },
+                        label = { Text(screen.title) },
+                        selected = currentRoute == screen.route,
+                        onClick = {
+                            // 4. Ao clicar, atualiza o ViewModel e navega
+                            viewModel.onCategoryChanged(screen.category)
+                            navController.navigate(screen.route) {
+                                // Evita empilhar telas
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
                 }
-            ) { innerPadding ->
-                NewsScreen(
-                    modifier = Modifier.padding(innerPadding),
-                    navController = navController
-                )
             }
         }
+    ) { innerPadding ->
+        // 5. O NavHost agora usa o padding do Scaffold
+        NavHost(
+            navController = navController,
+            startDestination = BottomNavScreen.Recentes.route, // Começa em "Recentes"
+            modifier = Modifier.padding(innerPadding)
+        ) {
 
-        composable(
-            route = Screen.ArticleDetail.route,
-            arguments = listOf(navArgument("articleUrl") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val encodedUrl = backStackEntry.arguments?.getString("articleUrl") ?: ""
-            val articleUrl = URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.toString())
+            // 6. Criamos uma rota para CADA item da bottom nav
+            // Todas apontam para a MESMA NewsScreen, passando o ViewModel
 
-            ArticleDetailScreen(
-                articleUrl = articleUrl,
-                onBackClick = {
-                    navController.popBackStack()
-                }
-            )
+            composable(BottomNavScreen.Recentes.route) {
+                NewsScreen(
+                    navController = navController,
+                    viewModel = viewModel // Passa o ViewModel compartilhado
+                )
+            }
+            composable(BottomNavScreen.Destaques.route) {
+                NewsScreen(
+                    navController = navController,
+                    viewModel = viewModel // Passa o ViewModel compartilhado
+                )
+            }
+            composable(BottomNavScreen.Regional.route) {
+                NewsScreen(
+                    navController = navController,
+                    viewModel = viewModel // Passa o ViewModel compartilhado
+                )
+            }
+
+            // 7. A tela de Detalhe continua igual
+            composable(
+                route = Screen.ArticleDetail.route,
+                arguments = listOf(navArgument("articleUrl") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val encodedUrl = backStackEntry.arguments?.getString("articleUrl") ?: ""
+                val articleUrl = URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.toString())
+
+                ArticleDetailScreen(
+                    articleUrl = articleUrl,
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
     }
 }
 
-// --- Tela 1: Lista de Notícias (LAYOUT CORRIGIDO) ---
+// --- Tela 1: Lista de Notícias (MODIFICADA) ---
 
-// GNews usa 'category', não 'topic'. E 'nation' é 'national' no Brasil.
-val categories = listOf(
-    "general", "world", "nation", "business", "technology",
-    "entertainment", "sports", "science", "health"
-)
+// A lista 'categories' foi removida daqui
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewsScreen(
     modifier: Modifier = Modifier,
-    viewModel: NewsViewModel = viewModel(),
+    viewModel: NewsViewModel, // NÃO inicia mais o VM aqui
     navController: NavController
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
     ) {
-        // --- 1. BARRA DE PESQUISA ---
+        // --- 1. BARRA DE PESQUISA (Sem alteração) ---
         TextField(
             value = searchQuery,
             onValueChange = { viewModel.onSearchQueryChanged(it) },
@@ -160,22 +212,8 @@ fun NewsScreen(
             singleLine = true
         )
 
-        // --- 2. FILTRO DE CATEGORIA ---
-        val selectedCategoryIndex = categories.indexOf(selectedCategory)
-        ScrollableTabRow(
-            selectedTabIndex = selectedCategoryIndex,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            categories.forEachIndexed { index, category ->
-                Tab(
-                    selected = index == selectedCategoryIndex,
-                    // Desabilita as abas se o usuário estiver pesquisando
-                    enabled = searchQuery.isBlank(),
-                    onClick = { viewModel.onCategoryChanged(categories[index]) },
-                    text = { Text(category.replaceFirstChar { it.titlecase() }) }
-                )
-            }
-        }
+        // --- 2. FILTRO DE CATEGORIA (REMOVIDO) ---
+        // A ScrollableTabRow não existe mais
 
         // --- 3. LISTA DE NOTÍCIAS (Box com weight) ---
         Box(
@@ -183,8 +221,6 @@ fun NewsScreen(
                 .fillMaxWidth()
                 .padding(top = 8.dp)
                 .weight(1f) // <-- *** CORREÇÃO DE SCROLL ***
-            // Isto dá ao Box um tamanho finito e
-            // permite que a LazyColumn role dentro dele.
         ) {
             when (val state = uiState) {
                 is NewsUiState.Loading -> {
@@ -201,7 +237,6 @@ fun NewsScreen(
                         NewsList(
                             articles = state.articles,
                             navController = navController,
-                            // A lista agora preenche o Box (que tem weight)
                             modifier = Modifier.fillMaxSize()
                         )
                     }

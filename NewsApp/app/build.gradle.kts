@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.converter.gson)
     // Coil (Image Loading)
     implementation(libs.coil.compose)
+    implementation(libs.cronet.embedded)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -79,4 +80,5 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    implementation(libs.androidx.compose.material.icons.extended)
 }
