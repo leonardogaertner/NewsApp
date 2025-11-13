@@ -1,5 +1,6 @@
 package br.udesc.ddm.newsapp.ui.components
 
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -14,7 +15,9 @@ import androidx.compose.runtime.Composable
 fun AppBar(
     title: String,
     showBackButton: Boolean = false,
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    // 1. ADICIONE ESTE PARÂMETRO
+    actions: @Composable RowScope.() -> Unit = {} // Permite passar botões de ação
 ) {
     TopAppBar(
         title = { Text(text = title) },
@@ -27,6 +30,8 @@ fun AppBar(
                     )
                 }
             }
-        }
+        },
+        // 2. PASSE AS AÇÕES PARA O TopAppBar
+        actions = actions
     )
 }
